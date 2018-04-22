@@ -1,15 +1,23 @@
+/*
+ *
+ * Use mode: server [PORT] [MAX_CLIENTS]
+ *
+ */
+
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
 
-#define PORT 12345
+#define DEFAULT_PORT 4848
+#define MAX_CLIENTS 100
 
-int main()
+int main(int argc, char *argv[])
 {
   // The sockaddr_in structure is used to store addresses for the Internet
-  // protocol family 
+  // protocol family
   //   sa_family_t    sin_family (INADDR_ANY, INADDR_BROADCAST, ...)
   //   in_port_t      sin_port (An unsigned integral type of exactly 16 bits.)
   //   struct in_addr sin_addr (An unsigned integral type of exactly 32 bits.)
@@ -17,23 +25,24 @@ int main()
   //
   struct sockaddr_in addr;
   int fd;
+  int portno = (argc < 2 ? DEFAULT_PORT : atoi(argv[1]));
 
   // int socket(int domain, int type, int protocol)
   // creates an unbound socket in a communications domain, and returns a file
   // descriptor that can be used in later function calls that operate on
   // sockets.
   //
-  //   domain: 
+  //   domain:
   //     AF_UNIX: File system pathnames.
   //     AF_INET: Internet address.
   //
   //   type: determines the semantics of communication over the socket.
-  //     SOCK_STREAM: Provides sequenced, reliable, bidirectional, 
+  //     SOCK_STREAM: Provides sequenced, reliable, bidirectional,
   //                  connection-mode byte streams, and may provide a
   //                  transmission mechanism for out-of-band data.
   //     SOCK_DGRAM: Provides datagrams, which are connectionless-mode,
   //                 unreliable messages of fixed maximum length.
-  //     
+  //
   //   protocol: Specifies a particular protocol to be used with the socket
   //     0 causes socket() to use an unspecified default protocol appropriate
   //     for the requested socket type
@@ -51,10 +60,10 @@ int main()
   // INADDR_ANY: Local host address.
   // AF_INET: Internet address.
   //
-  addr.sin_port = htons(PORT);
+  addr.sin_port = htons(portno);
   addr.sin_addr.s_addr = INADDR_ANY;
   addr.sin_family = AF_INET;
-  
+
   // int bind(int socket, const struct sockaddr *address, socklen_t address_len)
   // assigns an address to an unnamed socket. (Sockets created with socket()
   // function are initially unnamed)
@@ -72,7 +81,7 @@ int main()
       return -1;
   }
 
-  printf("Successfully bound to port %u\n", PORT);
+  printf("Successfully bound to port %u\n", portno);
 
   // int listen(int socket, int backlog);
   // marks a connection-mode socket, specified by the socket argument, as
@@ -103,7 +112,8 @@ int main()
   printf("client connected with ip address: %s\n",
 		       inet_ntoa(client_address.sin_addr));
 
-  while ((n = recv(client_sock, pbuffer, maxlen, 0)) > 0) {
+  while ((n = recv(client_sock, pbuffer, maxlen, 0)) > 0)
+  {
 		pbuffer += n;
 		maxlen -= n;
 		len += n;
