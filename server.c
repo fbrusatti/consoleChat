@@ -6,13 +6,135 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <unistd.h>
+#include <pthread.h> // link with lpthread
 
 #define DEFAULT_PORT 4848
 #define MAX_CLIENTS 100
+
+static unsigned int client_count = 0;
+static int uid = 10;
+
+/* Print ip address */
+void print_client_addr(struct sockaddr_in addr){
+  printf("%d.%d.%d.%d",
+    addr.sin_addr.s_addr & 0xFF,
+    (addr.sin_addr.s_addr & 0xFF00)>>8,
+    (addr.sin_addr.s_addr & 0xFF0000)>>16,
+    (addr.sin_addr.s_addr & 0xFF000000)>>24);
+}
+
+/* Client structure */
+typedef struct {
+	struct sockaddr_in addr;  // Client remote address
+	int conn_fd;              // Connection file descriptor
+	int uid;                  // Client unique identifier
+	char name[32];            // Client name
+} client_t;
+client_t *clients[MAX_CLIENTS];
+
+void enqueue(client_t *client)
+{
+  if (client_count < MAX_CLIENTS)
+  {
+    clients[client_count] = client;
+    client_count++;
+  }
+}
+
+void dequeue(client_t *client)
+{
+  // clients[client_count] = client;
+  client_count--;
+}
+
+// MANAGE MESSAGES
+/* Send message to all clients */
+void broadcast(char *message)
+{
+  int i;
+  for(i = 0; i < MAX_CLIENTS; i++){
+    if(clients[i]){
+      write(clients[i]->conn_fd, message, strlen(message));
+    }
+  }
+}
+
+/* Send message to all clients but the sender */
+void send_message(char *message, int uid)
+{
+  for(int i = 0; i < MAX_CLIENTS; i++){
+    if(clients[i]){
+      if(clients[i]->uid != uid){
+        write(clients[i]->conn_fd, message, strlen(message));
+      }
+    }
+  }
+}
+
+/* Strip CRLF */
+void strip_newline(char *s)
+{
+  while(*s != '\0') {
+    if(*s == '\r' || *s == '\n') {
+      *s = '\0';
+    }
+    s++;
+  }
+}
+
+// Threaded function
+// Handle the communication with the client
+//
+void *connection_handler(void *arg)
+{
+  char buff_out[1024];
+  char buff_in[1024];
+  int rlen;
+
+  client_t *client = (client_t *)arg;
+
+  printf("[CONNECTION ACCEPTED] Client uid %d\n", client->uid);
+  print_client_addr(client->addr);
+
+  sprintf(buff_out, "JOIN, HELLO %s\r\n", client->name);
+  broadcast(buff_out);
+
+  // Read 1024 bytes from client connecton descriptor
+  while((rlen = read(client->conn_fd, buff_in, sizeof(buff_in)-1)) > 0)
+  {
+    buff_in[rlen] = '\0';
+    buff_out[0] = '\0';
+    strip_newline(buff_in);
+
+    /* Ignore empty buffer */
+    if(!strlen(buff_in)){
+      continue;
+    }
+
+    /* Send message */
+    sprintf(buff_out, "[%s] %s\r\n", client->name, buff_in);
+    send_message(buff_out, client->uid);
+
+    /* Close connection */
+    close(client->conn_fd);
+    sprintf(buff_out, "BYE %s\r\n", client->name);
+    broadcast(buff_out);
+
+    /* Delete client from queue and yeild thread */
+    dequeue(client);
+    printf("[Connection Closed] User uid %d\n", client->uid);
+    free(client);
+    client_count--;
+    pthread_detach(pthread_self());
+
+    return NULL;
+  }
+}
 
 int main(int argc, char *argv[])
 {
@@ -24,9 +146,12 @@ int main(int argc, char *argv[])
   //   unsigned char  sin_zero[8]
   //
   struct sockaddr_in addr;
-  int fd;
+  struct sockaddr_in client_addr;
+  int sock_fd, client_sock_fd = 0;
   int portno = (argc < 2 ? DEFAULT_PORT : atoi(argv[1]));
+  pthread_t tid;
 
+  /* Socket Settings */
   // int socket(int domain, int type, int protocol)
   // creates an unbound socket in a communications domain, and returns a file
   // descriptor that can be used in later function calls that operate on
@@ -47,13 +172,12 @@ int main(int argc, char *argv[])
   //     0 causes socket() to use an unspecified default protocol appropriate
   //     for the requested socket type
   //
-  fd = socket(AF_INET, SOCK_STREAM, 0);
-  if(fd == -1)
+  sock_fd = socket(AF_INET, SOCK_STREAM, 0);
+  if(sock_fd == -1)
   {
       printf("Error opening socket\n");
       return -1;
   }
-
   // htons(hostshort) (host to network short
   // returns the argument value converted from host to network byte order.
   //
@@ -64,6 +188,7 @@ int main(int argc, char *argv[])
   addr.sin_addr.s_addr = INADDR_ANY;
   addr.sin_family = AF_INET;
 
+  /* Bind */
   // int bind(int socket, const struct sockaddr *address, socklen_t address_len)
   // assigns an address to an unnamed socket. (Sockets created with socket()
   // function are initially unnamed)
@@ -75,59 +200,69 @@ int main(int argc, char *argv[])
   // address_len: Specifies the length of the sockaddr structure pointed to by
   // the address argument.
   //
-  if(bind(fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) == -1)
+  if(bind(sock_fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) == -1)
   {
       printf("Error binding socket\n");
       return -1;
   }
-
   printf("Successfully bound to port %u\n", portno);
 
+  /* Listen */
   // int listen(int socket, int backlog);
   // marks a connection-mode socket, specified by the socket argument, as
   // accepting connections, and limits the number of outstanding connections in
   // the socket's listen queue to the value specified by the backlog argument.
   int max_waiting_clients = 3;
-  if (listen(fd, max_waiting_clients) < 0)
+  if (listen(sock_fd, max_waiting_clients) < 0)
   {
 		printf("could not open socket for listening\n");
 		return 1;
 	}
+  printf("Server started...\n");
 
-  struct sockaddr_in client_address;
-  int client_sock;
-  socklen_t client_address_len = 0;
-  if ((client_sock =
-       accept(fd, (struct sockaddr *)&client_address, &client_address_len)) < 0)
+  /* Accept Clients */
+  socklen_t client_addr_len = sizeof(struct sockaddr_in);;
+  while(1)
   {
-			printf("could not open a socket to accept data\n");
-			return 1;
-	}
 
-  int n = 0;
-	int len = 0, maxlen = 100;
-	char buffer[maxlen];
-	char *pbuffer = buffer;
+    // extracts the first connection on the queue of pending connections, creates a new socket with the same socket
+    // type protocol and address family as the specified socket, and allocates a new file descriptor for that socket.
+    //
+    // socket: Specifies a socket that was created with socket(), has been bound to an address with bind(), and has
+    //         issued a successful call to listen().
+    // address: Either a null pointer, or a pointer to a sockaddr structure where the address of the connecting socket
+    //          will be returned.
+    // address_len: Points to a socklen_t which on input specifies the length of the supplied sockaddr structure, and
+    //              on output specifies the length of the stored address.
+    //
+    if ((client_sock_fd = accept(sock_fd, (struct sockaddr *)&client_addr, &client_addr_len)) < 0)
+    {
+      printf("could not open a socket to accept data\n");
+      return 1;
+    }
 
-  printf("client connected with ip address: %s\n",
-		       inet_ntoa(client_address.sin_addr));
+    /* Check if max clients is reached */
+    if((client_count+1) == MAX_CLIENTS){
+      printf("[CONNECTION REJECT] Max client reached \n\n");
+      print_client_addr(client_addr);
+      printf("\n");
+      close(client_sock_fd);
+      continue;
+    }
+    printf("Connection accepted");
 
-  while ((n = recv(client_sock, pbuffer, maxlen, 0)) > 0)
-  {
-		pbuffer += n;
-		maxlen -= n;
-		len += n;
+    /* Client settings */
+    client_t *client = (client_t *) malloc(sizeof(client_t));
+    client->addr = client_addr;
+    client->conn_fd = client_sock_fd;
+    client->uid = uid++;
+    sprintf(client->name, "%d", client->uid);
 
-		printf("received: '%s'\n", buffer);
+    /* Add client to the queue and fork thread */
+    enqueue(client);
+    pthread_create(&tid, NULL, &connection_handler, (void*)client);
 
-		// echo received content back
-		send(client_sock, buffer, len, 0);
-	}
-
-	close(client_sock);
-
-  close(fd);
-
-	return 0;
+    /* Calm down the CPU */
+    sleep(1);
+  }
 }
-
