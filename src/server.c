@@ -20,7 +20,8 @@ static unsigned int client_count = 0;
 static int uid = 10;
 
 /* Print ip address */
-void print_client_addr(struct sockaddr_in addr){
+void print_client_addr(struct sockaddr_in addr)
+{
   printf("%d.%d.%d.%d",
     addr.sin_addr.s_addr & 0xFF,
     (addr.sin_addr.s_addr & 0xFF00)>>8,
@@ -39,8 +40,7 @@ client_t *clients[MAX_CLIENTS];
 
 void enqueue(client_t *client)
 {
-  if (client_count < MAX_CLIENTS)
-  {
+  if (client_count < MAX_CLIENTS) {
     clients[client_count] = client;
     client_count++;
   }
@@ -57,8 +57,8 @@ void dequeue(client_t *client)
 void broadcast(char *message)
 {
   int i;
-  for(i = 0; i < MAX_CLIENTS; i++){
-    if(clients[i]){
+  for(i = 0; i < MAX_CLIENTS; i++) {
+    if(clients[i]) {
       write(clients[i]->conn_fd, message, strlen(message));
     }
   }
@@ -67,9 +67,9 @@ void broadcast(char *message)
 /* Send message to all clients but the sender */
 void send_message(char *message, int uid)
 {
-  for(int i = 0; i < MAX_CLIENTS; i++){
-    if(clients[i]){
-      if(clients[i]->uid != uid){
+  for(int i = 0; i < MAX_CLIENTS; i++) {
+    if(clients[i]) {
+      if(clients[i]->uid != uid) {
         write(clients[i]->conn_fd, message, strlen(message));
       }
     }
@@ -96,23 +96,22 @@ void *connection_handler(void *arg)
   char buff_in[1024];
   int rlen;
 
-  client_t *client = (client_t *)arg;
+  client_t *client = (client_t *) arg;
 
   printf("[CONNECTION ACCEPTED] Client uid %d\n", client->uid);
   print_client_addr(client->addr);
 
-  sprintf(buff_out, "JOIN, HELLO %s\r\n", client->name);
+  sprintf(buff_out, "You've been joinned, HELLO %s\r\n", client->name);
   broadcast(buff_out);
 
   // Read 1024 bytes from client connecton descriptor
-  while((rlen = read(client->conn_fd, buff_in, sizeof(buff_in)-1)) > 0)
-  {
+  while((rlen = read(client->conn_fd, buff_in, sizeof(buff_in)-1)) > 0) {
     buff_in[rlen] = '\0';
     buff_out[0] = '\0';
     strip_newline(buff_in);
 
     /* Ignore empty buffer */
-    if(!strlen(buff_in)){
+    if(!strlen(buff_in)) {
       continue;
     }
 
@@ -134,6 +133,7 @@ void *connection_handler(void *arg)
 
     return NULL;
   }
+  return NULL;
 }
 
 int main(int argc, char *argv[])
@@ -173,10 +173,9 @@ int main(int argc, char *argv[])
   //     for the requested socket type
   //
   sock_fd = socket(AF_INET, SOCK_STREAM, 0);
-  if(sock_fd == -1)
-  {
-      printf("Error opening socket\n");
-      return -1;
+  if(sock_fd == -1) {
+    printf("Error opening socket\n");
+    return -1;
   }
   // htons(hostshort) (host to network short
   // returns the argument value converted from host to network byte order.
@@ -200,10 +199,9 @@ int main(int argc, char *argv[])
   // address_len: Specifies the length of the sockaddr structure pointed to by
   // the address argument.
   //
-  if(bind(sock_fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) == -1)
-  {
-      printf("Error binding socket\n");
-      return -1;
+  if(bind(sock_fd, (struct sockaddr *)&addr, sizeof(struct sockaddr_in)) == -1) {
+    printf("Error binding socket\n");
+    return -1;
   }
   printf("Successfully bound to port %u\n", portno);
 
@@ -212,9 +210,8 @@ int main(int argc, char *argv[])
   // marks a connection-mode socket, specified by the socket argument, as
   // accepting connections, and limits the number of outstanding connections in
   // the socket's listen queue to the value specified by the backlog argument.
-  int max_waiting_clients = 3;
-  if (listen(sock_fd, max_waiting_clients) < 0)
-  {
+  int max_waiting_clients = 5;
+  if (listen(sock_fd, max_waiting_clients) < 0) {
 		printf("could not open socket for listening\n");
 		return 1;
 	}
@@ -222,8 +219,7 @@ int main(int argc, char *argv[])
 
   /* Accept Clients */
   socklen_t client_addr_len = sizeof(struct sockaddr_in);;
-  while(1)
-  {
+  while(1) {
 
     // extracts the first connection on the queue of pending connections, creates a new socket with the same socket
     // type protocol and address family as the specified socket, and allocates a new file descriptor for that socket.
@@ -235,14 +231,13 @@ int main(int argc, char *argv[])
     // address_len: Points to a socklen_t which on input specifies the length of the supplied sockaddr structure, and
     //              on output specifies the length of the stored address.
     //
-    if ((client_sock_fd = accept(sock_fd, (struct sockaddr *)&client_addr, &client_addr_len)) < 0)
-    {
+    if ((client_sock_fd = accept(sock_fd, (struct sockaddr *)&client_addr, &client_addr_len)) < 0) {
       printf("could not open a socket to accept data\n");
       return 1;
     }
 
     /* Check if max clients is reached */
-    if((client_count+1) == MAX_CLIENTS){
+    if((client_count+1) == MAX_CLIENTS) {
       printf("[CONNECTION REJECT] Max client reached \n\n");
       print_client_addr(client_addr);
       printf("\n");
@@ -266,3 +261,4 @@ int main(int argc, char *argv[])
     sleep(1);
   }
 }
+
