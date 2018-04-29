@@ -13,12 +13,14 @@
 #include <unistd.h>
 #include <pthread.h>
 
+#include "server/client.h"
+
 #define DEFAULT_PORT 4848
 #define MAX_CLIENTS 100
 #define BUFFER_SIZE 1024
 
-static unsigned int client_count = 0;
 static int uid = 10;
+
 
 /* Print ip address */
 void print_client_addr(struct sockaddr_in addr)
@@ -28,30 +30,6 @@ void print_client_addr(struct sockaddr_in addr)
     (addr.sin_addr.s_addr & 0xFF00)>>8,
     (addr.sin_addr.s_addr & 0xFF0000)>>16,
     (addr.sin_addr.s_addr & 0xFF000000)>>24);
-}
-
-/* Client structure */
-typedef struct {
-	struct sockaddr_in addr;  /* Client remote address */
-	int conn_fd;              /* Connection file descriptor */
-	int uid;                  /* Client unique identifier */
-	char name[32];            /* Client name */
-} client_t;
-client_t *clients[MAX_CLIENTS];
-
-
-void enqueue(client_t *client)
-{
-  if (client_count < MAX_CLIENTS) {
-    clients[client_count] = client;
-    client_count++;
-  }
-}
-
-void dequeue(client_t *client)
-{
-  /* clients[client_count] = client; */
-  client_count--;
 }
 
 // MANAGE MESSAGES
@@ -129,7 +107,7 @@ void *connection_handler(void *arg)
     }
 
     /* Send message */
-    sprintf(buff_out, "[%s] %s\r\n", client->name, buff_in);
+    sprintf(buff_out, "%s \r\n", buff_in);
     send_message(buff_out, client->uid);
   }
 
@@ -231,8 +209,8 @@ int main(int argc, char *argv[])
       return 1;
     }
 
-    /* Check if max clients is reached */
-    if((client_count+1) == MAX_CLIENTS) {
+    /* Check if client queue is full */
+    if(full_queue()) {
       printf("[CONNECTION REJECT] Max client reached \n\n");
       print_client_addr(client_addr);
       printf("\n");
@@ -255,4 +233,3 @@ int main(int argc, char *argv[])
     sleep(1);
   }
 }
-
