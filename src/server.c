@@ -45,10 +45,10 @@ void broadcast(char *message)
 }
 
 /* Send message to all clients but the sender */
-void send_message(char *msge, int uid)
+void send_message(char *msge, int uid, char *user_name)
 {
-  char *message = (char *) malloc(strlen(message) + 6 * sizeof(char));
-  sprintf(message, "[%d] %s", uid, msge);
+  char *message = (char *) malloc((strlen(msge) + strlen(user_name) + 3) * sizeof(char));
+  sprintf(message, "[%s] %s", user_name, msge);
   for(int i = 0; i < MAX_CLIENTS; i++) {
     if(clients[i]) {
       if(clients[i]->uid != uid) {
@@ -91,7 +91,7 @@ void *connection_handler(void *arg)
   send_message_to_client(buff_out, client->conn_fd);
 
   sprintf(buff_out, "Please all, say hi to %s \r \n", client->name);
-  send_message(buff_out, client->uid);
+  send_message(buff_out, client->uid, client->name);
 
   while(1) {
     rlen = recvfrom(client->conn_fd, buff_in, BUFFER_SIZE, 0, NULL, NULL);
@@ -99,16 +99,52 @@ void *connection_handler(void *arg)
     buff_out[0] = '\0';
     strip_newline(buff_in);
 
-    printf("LOG [RECEIVED MESSAGE] %s \n", buff_in);
+    printf("[RECEIVED MESSAGE] %s \n", buff_in);
+
+    /* Exit when client exited gracefully */
+    if(rlen == 0) {
+      break;
+    }
 
     /* Ignore empty buffer */
     if(!strlen(buff_in)) {
       continue;
     }
 
+    /* Special options */
+    if(buff_in[0] == '\\') {
+      char *command, *param;
+      /* Separate strings by " " */
+      command = strtok(buff_in, " ");
+
+      if(!strcasecmp(command, "\\QUIT")) {
+        break;
+      } else if(!strcasecmp(command, "\\PING")){
+        send_message_to_client("<<PONG \r\n", client->conn_fd);
+      } else if(!strcasecmp(command, "\\NICKNAME")) {
+        param = strtok(NULL, " ");
+        if(param){
+          char *old_name = strdup(client->name);
+          strcpy(client->name, param);
+          sprintf(buff_out, "<<RENAME %s TO %s\r\n", old_name, client->name);
+          free(old_name);
+          broadcast(buff_out);
+        }
+      } else if(!strcasecmp(command, "\\HELP")) {
+        strcat(buff_out, "\r\n");
+        strcat(buff_out, "\\QUIT     Quit chatroom\r\n");
+        strcat(buff_out, "\\PING     Server test\r\n");
+        strcat(buff_out, "\\NICKNAME <name> Change nickname\r\n");
+        strcat(buff_out, "\\HELP     Show help\r\n");
+        send_message_to_client(buff_out, client->conn_fd);
+      } else {
+        send_message_to_client("<<UNKOWN COMMAND\r\n", client->conn_fd);
+      }
+    }
+
     /* Send message */
     sprintf(buff_out, "%s \r\n", buff_in);
-    send_message(buff_out, client->uid);
+    send_message(buff_out, client->uid, client->name);
   }
 
   return NULL;
