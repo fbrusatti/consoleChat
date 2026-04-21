@@ -28,15 +28,21 @@ void enqueue(client_t *client)
 /*
  * dequeue - removes a client from the active clients list and frees memory
  *
- * Note: This implementation frees the client memory but does NOT remove
- * the pointer from the clients array. Callers should be aware that
- * the array slot becomes NULL after this call.
+ * client: pointer to the client_t structure to remove
  */
 void dequeue(client_t *client)
 {
-  /* clients[client_count] = client; */
-  free(client);
-  client_count--;
+  for (int i = 0; i < client_count; i++) {
+    if (clients[i] == client) {
+      free(client);
+      for (int j = i; j < client_count - 1; j++) {
+        clients[j] = clients[j + 1];
+      }
+      clients[client_count - 1] = NULL;
+      client_count--;
+      return;
+    }
+  }
 }
 
 /*
