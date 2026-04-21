@@ -138,7 +138,18 @@ void *connection_handler(void *arg)
         strcat(buff_out, "\\QUIT     Quit chatroom\r\n");
         strcat(buff_out, "\\PING     Server test\r\n");
         strcat(buff_out, "\\NICKNAME <name> Change nickname\r\n");
+        strcat(buff_out, "\\LIST     List connected users\r\n");
         strcat(buff_out, "\\HELP     Show help\r\n");
+        send_message_to_client(buff_out, client->conn_fd);
+      } else if(!strcasecmp(command, "\\LIST")) {
+        strcpy(buff_out, "\r\n[CONNECTED USERS]\r\n");
+        for(int i = 0; i < MAX_CLIENTS; i++) {
+          if(clients[i]) {
+            strcat(buff_out, "- ");
+            strcat(buff_out, clients[i]->name);
+            strcat(buff_out, "\r\n");
+          }
+        }
         send_message_to_client(buff_out, client->conn_fd);
       } else {
         send_message_to_client("<<UNKOWN COMMAND\r\n", client->conn_fd);
