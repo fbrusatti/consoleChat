@@ -192,6 +192,13 @@ int main(int argc, char *argv[])
     printf("Error opening socket\n");
     return -1;
   }
+
+  int opt = 1;
+  if(setsockopt(sock_fd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) == -1) {
+    printf("Error setting socket options\n");
+    return -1;
+  }
+
   /* htons(hostshort) (host to network short
    * returns the argument value converted from host to network byte order.
    *
