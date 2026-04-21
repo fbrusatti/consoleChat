@@ -17,7 +17,7 @@
 
 #define DEFAULT_PORT 4848
 #define MAX_CLIENTS 100
-#define BUFFER_SIZE 1024
+#define BUFFER_SIZE 2048
 
 static int uid = 10;
 
@@ -78,7 +78,10 @@ void strip_newline(char *s)
 void *connection_handler(void *arg)
 {
   char buff_out[BUFFER_SIZE];
-  char buff_in[BUFFER_SIZE];
+  /* buff_in is 4 bytes smaller to safely:
+   *   1. Allow recvfrom to null-terminate the buffer
+   *   2. Leave room for snprintf to append "\r\n" (3 chars) + null terminator */
+  char buff_in[BUFFER_SIZE - 4];
   int rlen;
 
   client_t *client = (client_t *) arg;
@@ -94,7 +97,7 @@ void *connection_handler(void *arg)
   send_message(buff_out, client->uid, client->name);
 
   while(1) {
-    rlen = recvfrom(client->conn_fd, buff_in, BUFFER_SIZE, 0, NULL, NULL);
+    rlen = recvfrom(client->conn_fd, buff_in, BUFFER_SIZE - 4, 0, NULL, NULL);
     buff_in[rlen] = '\0';
     buff_out[0] = '\0';
     strip_newline(buff_in);
@@ -143,7 +146,7 @@ void *connection_handler(void *arg)
     }
 
     /* Send message */
-    sprintf(buff_out, "%s \r\n", buff_in);
+    snprintf(buff_out, sizeof(buff_out), "%s \r\n", buff_in);
     send_message(buff_out, client->uid, client->name);
   }
 
