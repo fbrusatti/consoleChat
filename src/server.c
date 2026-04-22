@@ -37,11 +37,13 @@ void print_client_addr(struct sockaddr_in addr)
 void broadcast(char *message)
 {
   int i;
+  pthread_mutex_lock(&clients_mutex);
   for(i = 0; i < MAX_CLIENTS; i++) {
     if(clients[i]) {
       write(clients[i]->conn_fd, message, strlen(message));
     }
   }
+  pthread_mutex_unlock(&clients_mutex);
 }
 
 /* Send message to all clients but the sender */
@@ -49,6 +51,7 @@ void send_message(char *msge, int uid, char *user_name)
 {
   char *message = (char *) malloc((strlen(msge) + strlen(user_name) + 3) * sizeof(char));
   sprintf(message, "[%s] %s", user_name, msge);
+  pthread_mutex_lock(&clients_mutex);
   for(int i = 0; i < MAX_CLIENTS; i++) {
     if(clients[i]) {
       if(clients[i]->uid != uid) {
@@ -56,6 +59,7 @@ void send_message(char *msge, int uid, char *user_name)
       }
     }
   }
+  pthread_mutex_unlock(&clients_mutex);
 }
 
 void send_message_to_client(const char *s, int conn_fd){
@@ -107,6 +111,7 @@ void *connection_handler(void *arg)
     /* Exit when client exited gracefully */
     if(rlen == 0) {
       dequeue(client);
+      close(client->conn_fd);
       break;
     }
 
@@ -122,6 +127,8 @@ void *connection_handler(void *arg)
       command = strtok(buff_in, " ");
 
       if(!strcasecmp(command, "\\QUIT")) {
+        dequeue(client);
+        close(client->conn_fd);
         break;
       } else if(!strcasecmp(command, "\\PING")){
         send_message_to_client("<<PONG \r\n", client->conn_fd);
@@ -129,8 +136,10 @@ void *connection_handler(void *arg)
         param = strtok(NULL, " ");
         if(param){
           char *old_name = strdup(client->name);
+          pthread_mutex_lock(&clients_mutex);
           strcpy(client->name, param);
           sprintf(buff_out, "<<RENAME %s TO %s\r\n", old_name, client->name);
+          pthread_mutex_unlock(&clients_mutex);
           free(old_name);
           broadcast(buff_out);
         }
@@ -144,6 +153,7 @@ void *connection_handler(void *arg)
         send_message_to_client(buff_out, client->conn_fd);
       } else if(!strcasecmp(command, "\\LIST")) {
         strcpy(buff_out, "\r\n[CONNECTED USERS]\r\n");
+        pthread_mutex_lock(&clients_mutex);
         for(int i = 0; i < MAX_CLIENTS; i++) {
           if(clients[i]) {
             strcat(buff_out, "- ");
@@ -151,6 +161,7 @@ void *connection_handler(void *arg)
             strcat(buff_out, "\r\n");
           }
         }
+        pthread_mutex_unlock(&clients_mutex);
         send_message_to_client(buff_out, client->conn_fd);
       } else {
         send_message_to_client("<<UNKOWN COMMAND\r\n", client->conn_fd);

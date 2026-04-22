@@ -14,6 +14,7 @@
 
 #include <stdlib.h>
 #include <arpa/inet.h>
+#include <pthread.h>
 
 
 /*
@@ -34,6 +35,7 @@ typedef struct {
 
 /* External declaration of the clients array (defined in client.c) */
 extern client_t *clients[MAX_CLIENTS];
+extern pthread_mutex_t clients_mutex;
 
 /* Client management function declarations */
 void enqueue(client_t *client);

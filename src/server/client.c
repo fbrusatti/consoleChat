@@ -8,6 +8,7 @@
 #include "client.h"
 
 unsigned int client_count = 0;
+pthread_mutex_t clients_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 /* Array storing pointers to all connected clients */
 client_t *clients[MAX_CLIENTS];
@@ -19,10 +20,12 @@ client_t *clients[MAX_CLIENTS];
  */
 void enqueue(client_t *client)
 {
+  pthread_mutex_lock(&clients_mutex);
   if (client_count < MAX_CLIENTS) {
     clients[client_count] = client;
     client_count++;
   }
+  pthread_mutex_unlock(&clients_mutex);
 }
 
 /*
@@ -32,6 +35,7 @@ void enqueue(client_t *client)
  */
 void dequeue(client_t *client)
 {
+  pthread_mutex_lock(&clients_mutex);
   for (int i = 0; i < client_count; i++) {
     if (clients[i] == client) {
       free(client);
@@ -40,9 +44,11 @@ void dequeue(client_t *client)
       }
       clients[client_count - 1] = NULL;
       client_count--;
+      pthread_mutex_unlock(&clients_mutex);
       return;
     }
   }
+  pthread_mutex_unlock(&clients_mutex);
 }
 
 /*
