@@ -106,6 +106,7 @@ void *connection_handler(void *arg)
 
     /* Exit when client exited gracefully */
     if(rlen == 0) {
+      dequeue(client);
       break;
     }
 
